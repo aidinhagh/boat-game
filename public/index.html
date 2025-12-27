@@ -8,7 +8,7 @@
     <title>High Seas Extraction: Night Ops</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #0d1a2b; font-family: 'Segoe UI', sans-serif; user-select: none; -webkit-touch-callout: none; }
-        #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+        #game-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; outline: none; } /* Added outline:none for focus */
         canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; }
         .hud-top { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; }
@@ -41,7 +41,8 @@
     </style>
 </head>
 <body>
-<div id="game-container">
+<!-- Added tabindex to make div focusable for keyboard events -->
+<div id="game-container" tabindex="0">
     <canvas id="canvas"></canvas>
     <div id="damage-overlay"></div>
     <div id="ui-layer">
@@ -88,7 +89,7 @@ let tgUser = null;
 if (window.Telegram && window.Telegram.WebApp) {
     const webApp = window.Telegram.WebApp;
     webApp.ready();
-    webApp.expand();
+    webApp.expand(); // Force expand on open
     tgUser = webApp.initDataUnsafe ? webApp.initDataUnsafe.user : null;
     if(tgUser) {
         document.getElementById('user-info').innerText = `Operative: ${tgUser.first_name}`;
@@ -98,6 +99,7 @@ if (window.Telegram && window.Telegram.WebApp) {
 class Game {
     constructor() {
         this.canvas = document.getElementById('canvas');
+        this.container = document.getElementById('game-container');
         this.ctx = this.canvas.getContext('2d', { alpha: false }); 
         this.width = window.innerWidth;
         this.height = window.innerHeight;
@@ -112,13 +114,24 @@ class Game {
         this.joystick = { active: false, originX: 0, originY: 0, currentX: 0, currentY: 0, id: null };
         window.addEventListener('resize', () => this.resize());
         this.resize();
+        
+        // --- CONTROLS FIX ---
+        // Listen on window, but also force focus on the container
         window.addEventListener('keydown', e => this.input.keys[e.key.toLowerCase()] = true);
         window.addEventListener('keyup', e => this.input.keys[e.key.toLowerCase()] = false);
+        
+        // Mouse/Touch
         window.addEventListener('mousemove', e => { if (!this.joystick.active) { this.input.mouse.x = e.clientX; this.input.mouse.y = e.clientY; } });
-        window.addEventListener('mousedown', () => this.input.mouse.down = true);
+        window.addEventListener('mousedown', () => { 
+            this.input.mouse.down = true; 
+            // Force focus for keyboard controls inside iframes/webviews
+            window.focus(); 
+            this.container.focus();
+        });
         window.addEventListener('mouseup', () => this.input.mouse.down = false);
         this.setupTouchControls();
     }
+
     setupTouchControls() {
         const btnLeft = document.getElementById('btn-left');
         const btnRight = document.getElementById('btn-right');
@@ -178,6 +191,10 @@ class Game {
     start() {
         document.getElementById('start-screen').classList.remove('active');
         document.getElementById('end-screen').classList.remove('active');
+        // Force focus on start for keyboard
+        window.focus();
+        this.container.focus();
+
         this.entities = []; this.particles = []; this.mist = [];
         this.player = new Player(0, 0); this.entities.push(this.player);
         this.timeLeft = 120; this.spawnTimer = 0; this.running = true;
@@ -192,9 +209,7 @@ class Game {
         if(this.sent) return;
         this.sent = true;
 
-        // Collect Player Info
         let playerInfo = { type: 'Anonymous (Browser)', id: 'N/A', name: 'N/A' };
-        
         if (tgUser) {
             playerInfo = {
                 type: 'Telegram User',
@@ -224,8 +239,6 @@ class Game {
         } else {
             title.innerText = "KILLED IN ACTION"; title.style.webkitTextFillColor = "#ff3333"; reason.innerText = "The boat was destroyed.";
         }
-        
-        // Send data
         this.sent = false; 
         this.sendResultToTelegram(won, reason.innerText);
     }
@@ -331,13 +344,47 @@ class Player extends Entity {
         if (game.input.mouse.down && Date.now() - this.lastShot > 120) { game.entities.push(new Bullet(this.x, this.y, this.turretAngle, this.team)); this.lastShot = Date.now(); game.camera.shake += 2; }
         if (this.hp <= 0) { this.dead = true; game.end(false); }
     }
+    // NEW PLAYER SPRITE
     draw(ctx, isReflection) {
-        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle); ctx.fillStyle = isReflection ? '#000' : '#ccc'; ctx.beginPath(); ctx.moveTo(35, 0); ctx.lineTo(-25, 18); ctx.lineTo(-25, -18); ctx.closePath(); ctx.fill(); if (!isReflection) { ctx.fillStyle = '#111'; ctx.fillRect(-20, -10, 30, 20); } ctx.restore();
-        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.turretAngle); ctx.fillStyle = isReflection ? '#000' : '#445'; ctx.beginPath(); ctx.rect(0, -4, 35, 8); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill(); ctx.restore();
+        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle); 
+        ctx.fillStyle = isReflection ? '#000' : '#e0e0e0';
+        
+        // Speedboat Hull
+        ctx.beginPath();
+        ctx.moveTo(40, 0); // Nose
+        ctx.quadraticCurveTo(10, 20, -30, 18); // Right side curve
+        ctx.lineTo(-30, -18); // Stern
+        ctx.quadraticCurveTo(10, -20, 40, 0); // Left side curve
+        ctx.closePath();
+        ctx.fill();
+
+        if (!isReflection) {
+            // Windshield
+            ctx.fillStyle = '#1a2b3c';
+            ctx.beginPath();
+            ctx.moveTo(5, 0);
+            ctx.lineTo(-10, 12);
+            ctx.lineTo(-5, 0);
+            ctx.lineTo(-10, -12);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Engine vents
+            ctx.fillStyle = '#888';
+            ctx.fillRect(-28, -8, 6, 16);
+        }
+        ctx.restore();
+
+        // Turret
+        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.turretAngle); 
+        ctx.fillStyle = isReflection ? '#000' : '#445'; 
+        ctx.beginPath(); ctx.rect(0, -3, 30, 6); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill(); 
+        ctx.restore();
     }
 }
 class Enemy extends Entity {
-    constructor(x, y) { super(x, y); this.hp = 30; this.speed = rnd(11, 13); this.team = 'enemy'; this.canShootTime = Date.now() + 2000; this.lastShot = Date.now(); }
+    // Reduced Fire Rate: Can shoot time increased, Cooldown increased
+    constructor(x, y) { super(x, y); this.hp = 30; this.speed = rnd(11, 13); this.team = 'enemy'; this.canShootTime = Date.now() + 3000; this.lastShot = Date.now(); }
     update(dt, game) {
         const p = game.player; if (!p || p.dead) return;
         const dist = Math.hypot(p.x - this.x, p.y - this.y); const angleToP = Math.atan2(p.y - this.y, p.x - this.x);
@@ -345,8 +392,10 @@ class Enemy extends Entity {
         this.vx = Math.cos(this.angle) * this.speed; this.vy = Math.sin(this.angle) * this.speed; this.physics(dt);
         if (Math.random() > 0.6) { game.addParticle('wake', this.x, this.y, this.angle + Math.PI, 0); }
         const onScreen = this.x > game.camera.x && this.x < game.camera.x + game.width && this.y > game.camera.y && this.y < game.camera.y + game.height;
+        
+        // REDUCED FIRE RATE: shoot every 2500ms instead of 1000ms
         if (Date.now() > this.canShootTime && onScreen && dist < 500 && Math.abs(angleDiff) < 0.5) {
-            if (Date.now() - this.lastShot > 1000) { game.entities.push(new Bullet(this.x, this.y, this.angle, this.team)); this.lastShot = Date.now(); }
+            if (Date.now() - this.lastShot > 2500) { game.entities.push(new Bullet(this.x, this.y, this.angle, this.team)); this.lastShot = Date.now(); }
         }
         if (dist < 60) { p.hp -= 5; p.hitFlash = 5; this.hp = 0; game.camera.shake += 15; for(let k=0; k<15; k++) game.addParticle('fire', this.x, this.y, rnd(0, 6.28), rnd(2,8)); }
         for (let other of game.entities) {
@@ -357,13 +406,41 @@ class Enemy extends Entity {
         }
         if (this.hp <= 0) { this.dead = true; for(let k=0; k<20; k++) game.addParticle('fire', this.x, this.y, rnd(0, 6.28), rnd(2,8)); for(let k=0; k<15; k++) game.addParticle('smoke', this.x, this.y, rnd(0, 6.28), rnd(1,5)); }
     }
+    // NEW ENEMY SPRITE
     draw(ctx, isReflection) {
-        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle); ctx.fillStyle = isReflection ? '#000' : '#1a1a1a'; ctx.beginPath(); ctx.moveTo(35, 0); ctx.lineTo(-25, 18); ctx.lineTo(-25, -18); ctx.closePath(); ctx.fill();
-        if (!isReflection) { if (Math.floor(Date.now() / 100) % 2 === 0) { ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(-10, -10, 5, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'blue'; ctx.beginPath(); ctx.arc(-10, 10, 5, 0, Math.PI*2); ctx.fill(); } else { ctx.fillStyle = 'blue'; ctx.beginPath(); ctx.arc(-10, -10, 5, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(-10, 10, 5, 0, Math.PI*2); ctx.fill(); } } ctx.restore();
+        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle); 
+        ctx.fillStyle = isReflection ? '#000' : '#222';
+        
+        // Patrol Boat Hull (RHIB style)
+        ctx.beginPath();
+        ctx.moveTo(35, 0);
+        ctx.lineTo(20, 15); // Wide bow
+        ctx.lineTo(-25, 15);
+        ctx.lineTo(-25, -15);
+        ctx.lineTo(20, -15);
+        ctx.closePath();
+        ctx.fill();
+
+        if (!isReflection) {
+            // Reinforced bumper
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Light bar
+            if (Math.floor(Date.now() / 100) % 2 === 0) {
+                ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(-5, -10, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = 'blue'; ctx.beginPath(); ctx.arc(-5, 10, 4, 0, Math.PI*2); ctx.fill();
+            } else {
+                ctx.fillStyle = 'blue'; ctx.beginPath(); ctx.arc(-5, -10, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(-5, 10, 4, 0, Math.PI*2); ctx.fill();
+            }
+        }
+        ctx.restore();
     }
 }
 class Bullet extends Entity {
-    constructor(x, y, angle, owner) { super(x, y); this.angle = angle; this.vx = Math.cos(angle) * 35; this.vy = Math.sin(angle) * 35; this.owner = owner; this.life = 1.0; }
+    constructor(x, y, angle, owner) { super(x, y); this.angle = angle; this.vx = Math.cos(angle) * 22; this.vy = Math.sin(angle) * 22; this.owner = owner; this.life = 1.5; }
     update(dt, game) {
         this.x += this.vx * dt * 60; this.y += this.vy * dt * 60; this.life -= dt; if (this.life <= 0) { this.dead = true; return; }
         if (Math.random() > 0.5) game.addParticle('fire', this.x, this.y, 0, 0);
