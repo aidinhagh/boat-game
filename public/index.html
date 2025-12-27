@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Import Telegram Web App Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>High Seas Extraction: Night Ops</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #0d1a2b; font-family: 'Segoe UI', sans-serif; user-select: none; -webkit-touch-callout: none; }
@@ -35,6 +37,7 @@
         .aim-hint-text { position: absolute; bottom: 40px; right: 40px; color: rgba(255,255,255,0.5); font-size: 14px; pointer-events: none; text-align: right; text-shadow: 0 1px 2px black; }
         #joystick-visual { position: absolute; width: 60px; height: 60px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; pointer-events: none; display: none; transform: translate(-50%, -50%); }
         #joystick-knob { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); }
+        #user-info { position: absolute; bottom: 10px; right: 10px; color: rgba(255,255,255,0.3); font-size: 12px; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -52,6 +55,7 @@
                 <div id="timer">02:00</div>
             </div>
         </div>
+        <div id="user-info"></div>
     </div>
     <div id="mobile-controls">
         <div class="control-group-left">
@@ -78,6 +82,18 @@
 <script>
 const rnd=(min,max)=>Math.random()*(max-min)+min;
 const clamp=(val,min,max)=>Math.min(Math.max(val,min),max);
+
+// TELEGRAM INIT
+let tgUser = null;
+if (window.Telegram && window.Telegram.WebApp) {
+    const webApp = window.Telegram.WebApp;
+    webApp.ready();
+    webApp.expand();
+    tgUser = webApp.initDataUnsafe ? webApp.initDataUnsafe.user : null;
+    if(tgUser) {
+        document.getElementById('user-info').innerText = `Operative: ${tgUser.first_name}`;
+    }
+}
 
 class Game {
     constructor() {
@@ -173,17 +189,28 @@ class Game {
     
     // --- TELEGRAM INTEGRATION ---
     async sendResultToTelegram(won, reason) {
-        // Prevent sending multiple times for same session if accidentally called
         if(this.sent) return;
         this.sent = true;
+
+        // Collect Player Info
+        let playerInfo = { type: 'Anonymous (Browser)', id: 'N/A', name: 'N/A' };
+        
+        if (tgUser) {
+            playerInfo = {
+                type: 'Telegram User',
+                id: tgUser.id,
+                username: tgUser.username ? `@${tgUser.username}` : 'N/A',
+                name: `${tgUser.first_name} ${tgUser.last_name || ''}`.trim()
+            };
+        }
 
         try {
             await fetch('/api/submit-score', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ won, reason, timeLeft: Math.floor(this.timeLeft) })
+                body: JSON.stringify({ won, reason, timeLeft: Math.floor(this.timeLeft), player: playerInfo })
             });
-        } catch(e) { console.log('Telegram API Error (Expected in preview mode)'); }
+        } catch(e) { console.log('Telegram API Error'); }
     }
 
     end(won) {
