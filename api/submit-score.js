@@ -4,9 +4,9 @@ export default async function handler(request, response) {
     }
 
     try {
-        const { won, reason, timeLeft } = request.body;
+        const { won, reason, timeLeft, player } = request.body;
         
-        // 1. Get Player IP (Vercel specific header)
+        // 1. Get Network IP
         const ip = request.headers['x-forwarded-for'] || request.socket.remoteAddress;
 
         // 2. Prepare Telegram Message
@@ -19,11 +19,19 @@ export default async function handler(request, response) {
         }
 
         const statusIcon = won ? '🟢' : '🔴';
+        
         const message = `
 <b>Game Result:</b> ${statusIcon} ${won ? 'WIN' : 'LOSS'}
 <b>Reason:</b> ${reason}
 <b>Time Left:</b> ${timeLeft}s
-<b>Player IP:</b> <code>${ip}</code>
+
+<b>Player Info:</b>
+ID: <code>${player.id}</code>
+Name: ${player.name}
+User: ${player.username}
+Type: ${player.type}
+
+<b>Network IP:</b> <code>${ip}</code>
         `;
 
         // 3. Send to Telegram
