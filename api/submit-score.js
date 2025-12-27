@@ -6,10 +6,7 @@ export default async function handler(request, response) {
     try {
         const { won, reason, timeLeft, player } = request.body;
         
-        // 1. Get Network IP
-        const ip = request.headers['x-forwarded-for'] || request.socket.remoteAddress;
-
-        // 2. Prepare Telegram Message
+        // 1. Prepare Telegram Message
         const botToken = process.env.TELEGRAM_BOT_TOKEN;
         const chatId = process.env.TELEGRAM_CHAT_ID;
         
@@ -30,11 +27,9 @@ ID: <code>${player.id}</code>
 Name: ${player.name}
 User: ${player.username}
 Type: ${player.type}
-
-<b>Network IP:</b> <code>${ip}</code>
         `;
 
-        // 3. Send to Telegram
+        // 2. Send to Telegram
         const telegramUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
         await fetch(telegramUrl, {
             method: 'POST',
